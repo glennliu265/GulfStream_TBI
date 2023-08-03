@@ -39,7 +39,7 @@ def get_gs_coords_whole(da,n_roll,return_grad=True):
     '''
     
     #da_mean = da.where(da.time.dt.month == m,drop=True).mean('time')
-    
+    da      = da.sst
     
     da_grad = get_total_gradient(da,n_roll)
     
@@ -47,12 +47,25 @@ def get_gs_coords_whole(da,n_roll,return_grad=True):
     
     lats_max = da_grad.argmax(dim='lat')
     
+    ntime,nlon = lats_max.values.shape
+    
+    gradmax = np.zeros((ntime,nlon)) * np.nan
+    for t in range(ntime):
+        lat_indices_t = lats_max.isel(time=t)
+        grad_along_gs = da_grad.isel(time=t,lat=lat_indices_t)
+        gradmax[t,:] = grad_along_gs
+    if return_grad:
+        return lats_max,da_grad
+    return gradmax
+
+
+
+    
     lats_max = da_grad.isel(lat = lats_max)
     
     if return_grad:
         return lats_max,da_grad
     return lats_max
-
 
 
 
