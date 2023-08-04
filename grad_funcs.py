@@ -17,7 +17,7 @@ from haversine import Unit
 #%% Functions
 
 
-def get_gs_coords_alltime(da,n_roll,varname,return_grad=True,latname='lat',lonname='lon',
+def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon',
                           latslice=[20,50],lonslice=[-75,-50]):
     '''
     INPUTS:
@@ -42,7 +42,6 @@ def get_gs_coords_alltime(da,n_roll,varname,return_grad=True,latname='lat',lonna
         da       = da.assign_coords(newcoord).sortby(lonname)
     
     # Compute Gradient
-    da      = da[varname]
     da_grad = get_total_gradient(da,n_roll,latname=latname,lonname=lonname)
     
     # Subset region, find max latitude for each longitude
