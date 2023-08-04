@@ -3,7 +3,6 @@
 """
 Created on Fri Aug  4 14:37:52 2023
 
-@author: gliu
 """
 
 import numpy as np
@@ -18,9 +17,8 @@ from haversine import Unit
 #%% Functions
 
 
-def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon',
-                          latslice=[20,50],lonslice=[360-75,360-50]):
-    
+def get_gs_coords_alltime(da,n_roll,varname,return_grad=True,latname='lat',lonname='lon',
+                          latslice=[20,50],lonslice=[-75,-50]):
     '''
     INPUTS:
     da: a dataarray containing sst on a regular grid (dimensions nx * ny)
@@ -36,9 +34,15 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     if (da[latname][1] - da[latname][0]) < 0:
         print("Flipping Latitude to go from South to North")
         da = da.isel(**{latname:slice(None,None,-1)})
+        
+    # Flip longitude to go from -180 to 180
+    if np.any(da[lonname]>180):
+        print("Flipping Longitude to go from -180 to 180")
+        newcoord = {lonname : ((da[lonname] + 180) % 360) - 180}
+        da       = da.assign_coords(newcoord).sortby(lonname)
     
     # Compute Gradient
-    da      = da.sst
+    da      = da[varname]
     da_grad = get_total_gradient(da,n_roll,latname=latname,lonname=lonname)
     
     # Subset region, find max latitude for each longitude
@@ -50,8 +54,8 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     mask[:,:,[0,-1]] = 0
     da_grad = da_grad * mask
     
+    # Get maximum latitudes
     lats_max = da_grad.argmax(dim=latname,skipna=True)
-    
     
     # Retrieve max gradient at each longitude
     ntime,nlon  = lats_max.values.shape
@@ -63,15 +67,6 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     if return_grad:
         return lats_max,max_gradient,da_grad
     return lats_max,max_gradient
-
-
-
-    
-    lats_max = da_grad.isel(lat = lats_max)
-    
-    if return_grad:
-        return lats_max,da_grad
-    return lats_max
 
 
 def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
@@ -99,9 +94,5 @@ def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     
     # Get total gradient
     grad_tot = (xgrad**2 + ygrad**2)**0.5
-    
-    # Get maximum gradient
-    
-    
     
     return grad_tot
