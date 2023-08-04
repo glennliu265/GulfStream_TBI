@@ -44,4 +44,4 @@ dict3 = {
 
 indicts_datasets      = [dict1,dict2,]
 indicts_keys     = [d["modelname"] for d in indicts_datasets]
-vars_dict             = dict(zip(indicts_keys,indicts_datasets))
+datasets_dict             = dict(zip(indicts_keys,indicts_datasets))
