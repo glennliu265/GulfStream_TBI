@@ -10,25 +10,54 @@ import numpy as np
 import xarray as xr
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
-
 import haversine as hs   
 from haversine import Unit
 
-#%% Set Paths
+#%% Dataset Information and Processing Options
 
-path = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/"
-#ncname  = "era5_sst_1940_2022_1deg.nc"
-ncname = "ERA5_sst_test.nc"
+# Name of NetCDF, latitude, longitude
+ncname      = "era5_sst_1940_2022_1deg.nc" #"ERA5_sst_test.nc"
+latname     = "lat"
+lonname     = "lon"
+varname     = "sst"
 
+# Output NetCDF will use these names...
+out_latname = "lat"
+out_lonname = "lon"
 
-figpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Figures/"
+# Processing Options
+n_roll      = 1 # Model grids to roll the data by when computing gradients.
+# ex: n_roll=1 shifts the latitudes by 1 for the gradient computation
+latslice    = [20,50]
+lonslice    = [-75,-50] # Use negative degrees for deg West
 
+#%% Specify the user
+
+user = "Glenn" # 
+
+if user == "Glenn":
+    
+    path    = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/" # Path to Data
+    outpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/Processed/" # Path for output of processed data
+    figpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Figures/" # Path to output figures
+    
+# Copy this section and add your own local paths, if wanted -------------------
+elif user == "YourName": 
+    
+    path    = "Path To Data"
+    outpath = "Path for output of processed data"
+    figpath = "Path to output figures"
+
+# -----------------------------------------------------------------------------
+elif user == None:
+    path    = "../../Data/"
+    outpath = "../../Data/Processed"
+    figpath = "../../Figures/"
+    
 #%% Functions
 
-
-def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon',
-                          latslice=[20,50],lonslice=[360-75,360-50]):
-    
+def get_gs_coords_alltime(da,n_roll,varname,return_grad=True,latname='lat',lonname='lon',
+                          latslice=[20,50],lonslice=[-75,-50]):
     '''
     INPUTS:
     da: a dataarray containing sst on a regular grid (dimensions nx * ny)
@@ -44,9 +73,15 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     if (da[latname][1] - da[latname][0]) < 0:
         print("Flipping Latitude to go from South to North")
         da = da.isel(**{latname:slice(None,None,-1)})
+        
+    # Flip longitude to go from -180 to 180
+    if np.any(da[lonname]>180):
+        print("Flipping Longitude to go from -180 to 180")
+        newcoord = {lonname : ((da[lonname] + 180) % 360) - 180}
+        da       = da.assign_coords(newcoord).sortby(lonname)
     
     # Compute Gradient
-    da      = da.sst
+    da      = da[varname]
     da_grad = get_total_gradient(da,n_roll,latname=latname,lonname=lonname)
     
     # Subset region, find max latitude for each longitude
@@ -58,8 +93,8 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     mask[:,:,[0,-1]] = 0
     da_grad = da_grad * mask
     
+    # Get maximum latitudes
     lats_max = da_grad.argmax(dim=latname,skipna=True)
-    
     
     # Retrieve max gradient at each longitude
     ntime,nlon  = lats_max.values.shape
@@ -71,17 +106,7 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
     if return_grad:
         return lats_max,max_gradient,da_grad
     return lats_max,max_gradient
-
-
-
     
-    lats_max = da_grad.isel(lat = lats_max)
-    
-    if return_grad:
-        return lats_max,da_grad
-    return lats_max
-
-
 def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     
     # Get Longitude
@@ -108,29 +133,94 @@ def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     # Get total gradient
     grad_tot = (xgrad**2 + ygrad**2)**0.5
     
-    # Get maximum gradient
-    
-    
-    
     return grad_tot
 
 #%%  Load the data
-n_roll  = 1
-sst     = xr.open_dataset(path+ncname)
-
-# sst = sst.rename_dims({'latitude' :'lat',
-#                   'longitude':'lon'})
-# sst = sst.rename_vars({'latitude' :'lat',
-#                   'longitude':'lon'})
-
-# # Compute gradient
-# gradsst = get_total_gradient(sst,n_roll,lonname='longitude',latname='latitude')
+sst     = xr.open_dataset(path+ncname).load()
 
 #%% Get the latitude locations and the gulf stream
 
-lat_max,max_gradient,sst_grads = get_gs_coords_alltime(sst,n_roll,return_grad=True,
-                                                       lonname='longitude',latname='latitude',lonslice=[-75,-50])
+# Compute Variables
+lat_max,max_gradient,sst_grads = get_gs_coords_alltime(sst,n_roll,varname,return_grad=True,
+                                                       lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
 
+
+# Compute to kilometers
+max_gradient   = max_gradient * 100
+sst_grads      = sst_grads    * 100
+
+# Retrieve latitudes
+ntime,nlon     = lat_max.shape
+lat_max_values = np.zeros((ntime,nlon)) * np.nan
+for t in range(ntime):
+    lat_indices = lat_max.isel(time=t).values
+    lat_max_values[t,:] = sst_grads[latname].values[lat_indices]
+
+#%% Make DataArray Outputs
+
+
+# Make Data Array for max_gradient --------------------------------------------
+dims = {'time':sst_grads.time.values,
+      out_lonname:sst_grads[lonname].values}
+
+attrs = {"long_name" :"max_gradient_along_gulfstream",
+         "units"     :"Kelvin per kilometer",
+         "varname"   :varname,
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
+da_maxgradient = xr.DataArray(max_gradient,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="max_gradient")
+                              
+
+# Make Data Array for latitude ------------------------------------------------
+attrs = {"long_name" :"latitude_of_max_gradient",
+         "units"     :"degrees North",
+         "varname"   :varname,
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
+da_lat_max = xr.DataArray(lat_max,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="lat_max")
+
+
+# Rename SST gradients ------------------------------------------------
+rename_coords = {lonname:out_lonname,
+                 latname:out_latname}
+da_sstgrad    = sst_grads.rename(rename_coords)
+
+# Coords Dictionary
+coords_dict = { "time"     :sst_grads.time.values,
+                out_latname:sst_grads[latname].values,
+                out_lonname:sst_grads[lonname].values} 
+
+
+savename = "%s/gulfstream_gradient_variables_nroll%i.npz" % (outpath,n_roll)
+np.savez(savename,**{
+    #"sst_grads"   :da_sstgrad,
+    "lat_indices" :lat_indices,
+    "max_gradient":da_maxgradient,
+    "lat_max"     :da_lat_max,
+    },allow_pickle=True)
+
+#%% Statement about how ENSO forced signal in western N altantic, impact flux gradients, link to surface baroclinity (eady growth rate, dT/dy) -->
+
+
+# Influence of the Gulf Stream on the Troposphere, Shishiro Minobe, imprint 
+# 200 hPa, recent papers on storms
+# frontal variability --> interannual variability, set the mean 
+
+# Sensile hat flux gradient "
+
+#%%
 
 # Add cosine weight when calculating index
 
@@ -138,19 +228,14 @@ lat_max,max_gradient,sst_grads = get_gs_coords_alltime(sst,n_roll,return_grad=Tr
 # where time.dt.month etc match with enso
 
 
-#%% Just visualize Gulf Stream Path (6-hourly)
+"#%% Just visualize Gulf Stream Path (6-hourly)
 
-
-lonname='longitude'
-latname='latitude'
 
 ntime,nlat,nlon = sst_grads.shape
 im              = 0
 vlms            = [0,5]
 fig,ax = plt.subplots(1,1,subplot_kw={'projection':ccrs.PlateCarree()},figsize=(12,4),
                        constrained_layout=True)
-
-
 
 ax.coastlines()
 ax.set_extent((-80,-50,20,55))
@@ -209,8 +294,6 @@ for t in np.arange(0,ntime+1,4): # Plot everyday
 
 
 #%%
-
-
 
 
 
