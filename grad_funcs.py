@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import haversine as hs   
 from haversine import Unit
 
-
 #%% Functions
 
 
@@ -95,3 +94,9 @@ def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     grad_tot = (xgrad**2 + ygrad**2)**0.5
     
     return grad_tot
+
+def lon360to180_xr(ds,lonname='lon'):
+    # Based on https://stackoverflow.com/questions/53345442/about-changing-longitude-array-from-0-360-to-180-to-180-with-python-xarray
+    ds.coords[lonname] = (ds.coords[lonname] + 180) % 360 - 180
+    ds = ds.sortby(ds[lonname])
+    return ds
