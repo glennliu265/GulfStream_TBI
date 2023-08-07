@@ -13,6 +13,20 @@ Created on Mon Aug  7 09:17:37 2023
 import numpy as np
 from scipy.signal import butter,filtfilt
 
+#%% Typical Inputs
+
+bbox            = [-80,0,0,60] # Can add go up to 65N if you masked out the ice
+cutofftime      = 120 # for monthly data, 10 for annual data
+order           = 6 # I usually play with this number a bit
+awgt            = "cos" # I usually use cosine weighting
+return_NASST    = True # Return the unsmoothed index so you can have the results
+runmean         = False # We'll use the low-pass filter this time
+
+# Note on SST
+# SST should be deseasonalized and detrended
+# Suggested format is a numpy array with dimensions [lon x lat x time], but I tried to modify it for dataarrays, you can test it out
+
+
 #%%
 
 def calc_AMV(lon,lat,sst,bbox,order,cutofftime,awgt="cos",runmean=False,return_NASST=False):
