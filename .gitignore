@@ -41,3 +41,4 @@ __pycache__/grad_funcs.cpython-311.pyc
 __pycache__/compute_gulfstream_gradient.cpython-311.pyc
 .ipynb_checkpoints/Nino3.4-checkpoint.ipynb
 .ipynb_checkpoints/GS_composites-checkpoint.ipynb
+*.png
