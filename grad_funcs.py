@@ -149,7 +149,7 @@ def find_nino(ts_nino34):
     
     return flat_nino, flat_nina
 
-def find_enso(sst):
+def find_enso(sst,plotfig=False):
     
     '''
     
@@ -169,15 +169,16 @@ def find_enso(sst):
     nino_date, nina_date = find_nino(nino34)
     
     # For a graphical visualization of the results
-    fig,ax = plt.subplots(figsize=(11,7))
-    ax.plot(nino34.time,nino34)
-    plt.plot(nino34.sel(time=nino_date).time,nino34.sel(time=nino_date),'o',markersize=5)
-    plt.plot(nino34.sel(time=nina_date).time,nino34.sel(time=nina_date),'o',markersize=5)
-    plt.axhline(y=0.4,color='k')
-    plt.axhline(y=-0.4,color='k')
-    plt.xlim(sst.isel(time=0).time, sst.isel(time=-1).time)
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Nino3.4 index', fontsize=12)
+    if plotfig:
+        fig,ax = plt.subplots(figsize=(11,7))
+        ax.plot(nino34.time,nino34)
+        plt.plot(nino34.sel(time=nino_date).time,nino34.sel(time=nino_date),'o',markersize=5)
+        plt.plot(nino34.sel(time=nina_date).time,nino34.sel(time=nina_date),'o',markersize=5)
+        plt.axhline(y=0.4,color='k')
+        plt.axhline(y=-0.4,color='k')
+        plt.xlim(sst.isel(time=0).time, sst.isel(time=-1).time)
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Nino3.4 index', fontsize=12)
     
     
     return nino34, nino_date, nina_date
