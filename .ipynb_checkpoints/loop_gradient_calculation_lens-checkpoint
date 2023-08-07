@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+
+Loop calculations for the cmip6 lens
+
+Created on Fri Aug  4 17:02:43 2023
+
+@author: gliu
+"""
+
+import numpy as np
+import xarray as xr
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
+import haversine as hs   
+from haversine import Unit
+import sys
+import glob
+
+#%% Calculation choices
+
+
+# Processing Options
+n_roll      = 1 # Model grids to roll the data by when computing gradients.
+# ex: n_roll=1 shifts the latitudes by 1 for the gradient computation
+latslice    = [20,50]
+lonslice    = [-75,-50] # Use negative degrees for deg West
+
+#%% 
+
+sys.path.append("..")
+from grad_funcs import get_gs_coords_alltime,get_total_gradient
+import dataset_params as dparams
+
+#%%
+
+modelnames = dparams.indicts_keys
+modeldicts = dparams.datasets_dict
+
+m = 0
+e = 0
+
+# Loop by model
+modelname = modelnames[m]
+mdict     = modeldicts[modelname]
+latname   = mdict['latname']
+lonname   = mdict['lonname']
+
+# 1 Compute the gradient
+nclist = glob.glob(mdict['sst_path'] + "*.nc")
+nclist.sort()
+nens   = len(nclist)
+print("Found %i files!" % (nens))
+
+
+
+maxgrad_ens  = []
+latmax_ens   = []
+latmaxid_ens = []
+
+# Loop by ens -------------------------
+ds = xr.open_dataset(nclist[e])
+da = ds[mdict['sst']].load()
+
+# Compute Variables
+lat_max,max_gradient,sst_grads = get_gs_coords_alltime(da,n_roll,return_grad=True,
+                                                       lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
+
+# Compute to kilometers
+max_gradient   = max_gradient * 100
+sst_grads      = sst_grads    * 100
+
+# Retrieve latitudes
+ntime,nlon     = lat_max.shape
+lat_max_values = np.zeros((ntime,nlon)) * np.nan
+for t in range(ntime):
+    lat_indices = lat_max.isel(time=t).values
+    lat_max_values[t,:] = sst_grads[latname].values[lat_indices]
+
+maxgrad_ens.append(max_gradient)
+latmax_ens.append(lat_max_values)
+latmaxid_ens.append(lat_max)
+
+# Next, convert to arrays with ens, and make into dataarray, then save
+
+
