@@ -157,7 +157,10 @@ def find_enso(sst,plotfig=False):
     
     '''
     # First I select the region used to define Nino3.4
-    sst34 = sst.sel(lat=slice(-5,5), lon= slice(190,240))
+    if np.any(sst.lon < 0):
+        sst34 = sst.sel(lat=slice(-5,5), lon=slice(190-360,240-360))
+    else:
+        sst34 = sst.sel(lat=slice(-5,5), lon= slice(190,240))
     
     # Detrend, deseasonalize data and make field mean, make rolling mean on the time-series
     sst34 = detrend(sst34)
@@ -182,3 +185,27 @@ def find_enso(sst,plotfig=False):
     
     
     return nino34, nino_date, nina_date
+
+def get_enso_dates(ndates,sst):
+    
+    
+    # convert cftime to datetime64
+    ntime  = len(ndates)
+    enso_months = []
+    for t in range(ntime):
+        enso_months.append(ndates[t].astype('datetime64[M]'))
+        #nno_months.append()
+    enso_months = np.array(enso_months,dtype='datetime64[M]')
+    
+    # Get first year of SST
+    year0        = sst.time.dt.year.min()
+    year0        = int(year0)
+    
+    # Convert to indices
+    enso_indices      = enso_months.astype('int')+(1970-year0)*12
+    sst_month_indices = (sst.time.dt.year-year0)*12 + sst.time.dt.month
+
+    # Subset ssts
+    sst_enso     = sst.where(sst_month_indices.isin(enso_indices),drop=True)
+    sst_enso     = sst_enso # []
+    return enso_months,sst_enso
