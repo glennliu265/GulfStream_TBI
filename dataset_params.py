@@ -42,6 +42,6 @@ dict3 = {
     "startyr"  : 1850,
     }
 
-indicts_datasets      = [dict1,dict2,]
+indicts_datasets      = [dict1,dict2,dict3,]
 indicts_keys     = [d["modelname"] for d in indicts_datasets]
 datasets_dict             = dict(zip(indicts_keys,indicts_datasets))
