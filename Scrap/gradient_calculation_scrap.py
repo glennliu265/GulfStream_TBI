@@ -22,7 +22,6 @@ path = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Pr
 #ncname  = "era5_sst_1940_2022_1deg.nc"
 ncname = "ERA5_sst_test.nc"
 
-
 figpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Figures/"
 
 #%% Functions
@@ -111,9 +110,6 @@ def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     grad_tot = (xgrad**2 + ygrad**2)**0.5
     
     # Get maximum gradient
-    
-    
-    
     return grad_tot
 
 #%%  Load the data
@@ -125,13 +121,16 @@ sst     = xr.open_dataset(path+ncname)
 # sst = sst.rename_vars({'latitude' :'lat',
 #                   'longitude':'lon'})
 
-# Compute gradient
-gradsst = get_total_gradient(sst,n_roll,lonname='longitude',latname='latitude')
+# # Compute gradient
+# gradsst = get_total_gradient(sst,n_roll,lonname='longitude',latname='latitude')
 
 #%% Get the latitude locations and the gulf stream
 
 lat_max,max_gradient,sst_grads = get_gs_coords_alltime(sst,n_roll,return_grad=True,
                                                        lonname='longitude',latname='latitude',lonslice=[-75,-50])
+
+
+# Add cosine weight when calculating index
 
 #%% Just visualize Gulf Stream Path (6-hourly)
 

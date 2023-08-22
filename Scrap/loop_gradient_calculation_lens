@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+
+Loop calculations for the cmip6 lens
+
+Created on Fri Aug  4 17:02:43 2023
+
+@author: gliu
+"""
+
+import numpy as np
+import xarray as xr
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
+import haversine as hs   
+from haversine import Unit
+import sys
+import glob
+
+import pickle
+
+#%% Calculation choices
+# ---------------------
+
+# Processing Options
+n_roll       = 1 # Model grids to roll the data by when computing gradients.
+# ex: n_roll=1 shifts the latitudes by 1 for the gradient computation
+latslice     = [20,50]
+lonslice     = [-75,-50] # Use negative degrees for deg West
+
+out_lonname  = "lon"
+out_latname  = "lat"
+varname      = "hfss"
+
+outpath      = "/stormtrack/data3/glliu/01_Data/ICTP/Data/"
+
+#%%  Import Custom Modules
+# ------------------------
+
+sys.path.append("..")
+import dataset_params as dparams
+import grad_funcs as gf
+
+#%% Part 1. Compute the Gulf Stream Index Values/Gradients
+# --------------------------------------------------------
+modelnames = dparams.indicts_keys
+modeldicts = dparams.datasets_dict
+
+# Loop by model
+for m in range(len(modelnames)):
+    modelname = modelnames[m]
+    mdict     = modeldicts[modelname]
+    latname   = mdict['latname']
+    lonname   = mdict['lonname']
+    
+    # 1 Compute the gradient --------------------
+    nclist = glob.glob(mdict['sst_path'] + "/" + "*.nc")
+    nclist.sort()
+    nens   = len(nclist)
+    print("Found %i files!" % (nens))
+    
+    
+    maxgrad_ens  = []
+    latmax_ens   = []
+    latmaxid_ens = []
+    
+    # Loop by ens -------------------------
+    for e in range(nens):
+        ds = xr.open_dataset(nclist[e])
+        da = ds[mdict['sst']].load()
+        
+        # Compute Variables
+        lat_max,max_gradient,sst_grads = gf.get_gs_coords_alltime(da,n_roll,return_grad=True,
+                                                               lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
+        
+        # Compute to kilometers
+        max_gradient   = max_gradient * 100
+        sst_grads      = sst_grads    * 100
+        
+        # Retrieve latitudes
+        ntime,nlon     = lat_max.shape
+        lat_max_values = np.zeros((ntime,nlon)) * np.nan
+        for t in range(ntime):
+            lat_indices = lat_max.isel(time=t).values
+            lat_max_values[t,:] = sst_grads[latname].values[lat_indices]
+        
+        maxgrad_ens.append(max_gradient)
+        latmax_ens.append(lat_max_values)
+        latmaxid_ens.append(lat_max)
+        
+        # <End Ensemble Loop>
+    
+    # Next, convert to arrays with ens, and make into dataarray, then save
+    maxgrad_ens  = np.array(maxgrad_ens)   # [ens x time x lon]
+    latmax_ens   = np.array(latmax_ens)    # [ens x time x lon]
+    latmaxid_ens = np.array(latmaxid_ens) # [ens x time x lon]
+    
+    # 2. Make into DataArray ------------------------------------------------------
+    
+    # Make Data Array for max_gradient --------------------------------------------
+    dims = {'ens' :np.arange(nens)+1,
+            'time':sst_grads.time.values,
+            out_lonname:sst_grads[lonname].values}
+    
+    attrs = {"long_name" :"max_gradient_along_gulfstream",
+             "units"     :"Kelvin per kilometer",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    da_maxgradient = xr.DataArray(maxgrad_ens,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="max_gradient")
+                                  
+    
+    # Make Data Array for latitude ------------------------------------------------
+    attrs = {"long_name" :"latitude_of_max_gradient",
+             "units"     :"degrees North",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    da_lat_max = xr.DataArray(latmax_ens,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="lat_max")
+    
+    # Make Data Array for latitude indi es ------------------------------------------------
+    attrs = {"long_name" :"latitude_index_of_max_gradient",
+             "units"     :"degrees North",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    
+    da_lat_max = xr.DataArray(latmaxid_ens,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="lat_max_id")
+    
+    savename = "%s/gulfstream_gradient_variables_%s_nroll%i.npz" % (outpath,modelname,n_roll)
+    np.savez(savename,**{
+        "lat_indices" :lat_indices,
+        "max_gradient":da_maxgradient,
+        "lat_max"     :da_lat_max,
+        "lat"         :sst_grads.lat.values,
+        },allow_pickle=True)
+    print("Saved data to %s for %s." % (savename,modelname))
+
+#%% 2. Also compute the files for ENSO
+# ------------------------------------
+
+
+modelnames = dparams.indicts_keys
+modeldicts = dparams.datasets_dict
+
+# Loop by model
+for m in range(len(modelnames)):
+    modelname = modelnames[m]
+    mdict     = modeldicts[modelname]
+    latname   = mdict['latname']
+    lonname   = mdict['lonname']
+    
+    # 1 Compute the gradient --------------------
+    nclist = glob.glob(mdict['sst_path'] + "/" + "*.nc")
+    nclist.sort()
+    nens   = len(nclist)
+    print("Found %i files!" % (nens))
+    
+    
+    nino34_ens    = []
+    nino_date_ens = []
+    nina_date_ens = []
+    # Loop by ens -------------------------
+    for e in range(nens):
+        
+        # 
+        ds = xr.open_dataset(nclist[e])
+        da = ds[mdict['sst']].load()
+        
+        # Get the enso indices
+        nino34,nino_date,nina_date = gf.find_enso(da)
+        
+        # Append the data
+        nino34_ens.append(nino34)
+        nino_date_ens.append(nino_date)
+        nina_date_ens.append(nina_date)
+    
+    savevars      = [nino34_ens,nino_date_ens,nina_date_ens]
+    savevars_name = ["nino34","nino_date","nina_date"]
+    for sv in range(len(savevars)):
+        if sv == 0:
+            ds_allens  = xr.concat(savevars[sv],dim='ens')
+            savenetcdf = "%s%s_ENSO_%s.nc" % (outpath,modelname,savevars_name[sv])
+            ds_allens.to_netcdf(savenetcdf)
+        else:
+            ds_allens = np.array(savevars[sv]) # [ens x time]
+            savename = "%s%s_ENSO_%s.npy" % (outpath,modelname,savevars_name[sv])
+            np.save(savename,ds_allens)
+            #ds_allens  = xr.concat(savevars[sv],dim='ens')
+            #savenetcdf = "%s%s_ENSO_%s.nc" % (outpath,modelname,savevars_name[sv])
+            #ds_allens.to_netcdf()

@@ -17,9 +17,9 @@ import sys
 #%% Dataset Information and Processing Options
 
 # Name of NetCDF, latitude, longitude
-ncname      = "era5_sst_1940_2022_1deg.nc" #"ERA5_sst_test.nc"
-latname     = "lat"
-lonname     = "lon"
+ncname      = "era5_sst_shf_dec_jan_feb1940_2023_025deg.nc" #"ERA5_sst_test.nc"
+latname     = "latitude"
+lonname     = "longitude"
 varname     = "sst"
 
 # Output NetCDF will use these names...
@@ -38,9 +38,9 @@ user = "Glenn" #
 
 if user == "Glenn":
     
-    path    = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/" # Path to Data
-    outpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/Processed/" # Path for output of processed data
-    figpath = "/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Figures/" # Path to output figures
+    path    = r'/Users/gliu/ICTP_temp/'#"/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/" # Path to Data
+    outpath = path#"/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Data/Processed/" # Path for output of processed data
+    figpath = r'/Users/gliu/ICTP_temp/figs/'#"/Users/gliu/Dropbox (MIT)/Glenn Liu’s files/Home/Work_Portable/ICTP/Project/Figures/" # Path to output figures
     
 # Copy this section and add your own local paths, if wanted -------------------
 elif user == "YourName": 
@@ -59,6 +59,7 @@ elif user == None:
 
 sys.path.append("..")
 from grad_funcs import get_gs_coords_alltime,get_total_gradient
+import grad_funcs as gf
 
 #%%  Load the data
 sst     = xr.open_dataset(path+ncname).load()
@@ -99,6 +100,10 @@ da_maxgradient = xr.DataArray(max_gradient,
                               coords = dims,
                               attrs=attrs,
                               name="max_gradient")
+
+savename = "%sERA5_25deg_GSvariable_sst_maxgradient.nc" % (outpath)
+da_maxgradient.to_netcdf(savename)
+
                               
 
 # Make Data Array for latitude ------------------------------------------------
@@ -114,24 +119,26 @@ da_lat_max = xr.DataArray(lat_max,
                               coords = dims,
                               attrs=attrs,
                               name="lat_max")
+savename = "%sERA5_25deg_GSvariable_sst_latmax.nc" % (outpath)
+da_lat_max.to_netcdf(savename)
 
 
-# Rename SST gradients ------------------------------------------------
-rename_coords = {lonname:out_lonname,
-                 latname:out_latname}
-da_sstgrad    = sst_grads.rename(rename_coords)
+# Make Data Array for latitude indices ------------------------------------------------
+attrs = {"long_name" :"latitude_index_of_max_gradient",
+         "units"     :"degrees North",
+         "varname"   :"sst",
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
 
-# Coords Dictionary
-coords_dict = { "time"     :sst_grads.time.values,
-                out_latname:sst_grads[latname].values,
-                out_lonname:sst_grads[lonname].values} 
+da_lat_max = xr.DataArray(lat_max,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="lat_max_id")
+savename = "%sERA5_25deg_GSvariable_sst_latmaxid.nc" % (outpath)
+da_lat_max.to_netcdf(savename)
 
 
-savename = "%s/gulfstream_gradient_variables_nroll%i.npz" % (outpath,n_roll)
-np.savez(savename,**{
-    #"sst_grads"   :da_sstgrad,
-    "lat_indices" :lat_indices,
-    "max_gradient":da_maxgradient,
-    "lat_max"     :da_lat_max,
-    },allow_pickle=True)
-print("Saved data to %s" % savename)
+
