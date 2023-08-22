@@ -32,7 +32,7 @@ import cmocean
 #%%
 
 e           = 0
-vname       = "sshf"
+vname       = "sst"
 datpath     = '/Users/gliu/ICTP_temp/'
 figpath     = '/Users/gliu/ICTP_temp/figs/'
 analysis_months = [3]
@@ -51,7 +51,7 @@ latname  = "lat"
 lonname  = "lon"
 
 if vname == "sst":
-    unit_conv = 1/100 # Per KM
+    unit_conv = 100 # Per KM
     cbar_lbl  = r'$|\nabla$SST| ($\degree$ C (100 km)$^{-1}$)'
 elif vname == "sshf":
     unit_conv = 1/1000 # J/m2
@@ -150,7 +150,7 @@ nino_years = nino_grad_annual.year.data
 nina_years = nina_grad_annual.year.data
 sig        = nino_grad_mean-nina_grad_mean
 
-for i in range(5):
+for i in range(10):
     rs_nino = np.random.choice(nino_years,10)
     rs_nina = np.random.choice(nina_years,10)
     comp = nino_grad_annual.where(nino_grad_annual.year.isin(rs_nino)).mean('year') - nina_grad_annual.where(nina_grad_annual.year.isin(rs_nina)).mean('year')
@@ -159,7 +159,7 @@ for i in range(5):
 #%% Plot Nino-nina
 
 if vname == "sst":
-    vlms = [-1e-5,1e-5]
+    vlms = [-5e-1,5e-1]
 elif vname == "sshf":
     vlms = [-5e-5,5e-5]
     
@@ -168,7 +168,7 @@ fig,ax = plt.subplots(figsize=(6,5),subplot_kw={'projection':ccrs.PlateCarree()}
 im = ax.pcolormesh(lons,lats,
                    (nino_grad_mean-nina_grad_mean),
                    transform=ccrs.PlateCarree(),
-                   vmin=-5e-5,vmax=5e-5,
+                   vmin=vlms[0],vmax=vlms[-1],
                    cmap="RdBu_r")#norm=colors.CenteredNorm(0,0.8))#(0,0.0005))#,cmap='RdBu_r')
 
 stip = ax.contourf(lons,lats,sig*mask,transform=ccrs.PlateCarree(),
@@ -231,6 +231,247 @@ for ii in range(2):
 
 figname = "%sCESM1_ENSOComposites_%s_ens%02i.png" % (figpath,vname,e+1)
 plt.savefig(figname,bbox_tight='inches',dpi=150,transparent=True)
+
+
+#%% Compute the Gulf Str for CESM1
+
+# Compute Variables
+lat_max,max_gradient,sst_grads = gf.get_gs_coords_alltime(da_sst,n_roll,return_grad=True,
+                                                       lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
+
+# Compute to kilometers
+max_gradient   = max_gradient * 100
+sst_grads      = sst_grads    * 100
+
+# Retrieve latitudes
+ntime,nlon     = lat_max.shape
+lat_max_values = np.zeros((ntime,nlon)) * np.nan
+for t in range(ntime):
+    lat_indices = lat_max.isel(time=t).values
+    lat_max_values[t,:] = sst_grads[latname].values[lat_indices]
+    
+    
+# # Retrieve max gradients for sshf
+# _,_,shf_grads = gf.get_gs_coords_alltime(da_shf,n_roll,return_grad=True,
+#                                                        lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
+
+# max_gradient_shf = np.zeros((ntime,nlon)) * np.nan
+# for t in range(ntime):
+    
+#     lat_indices = lat_max.isel(time=t).values
+#     check       = shf_grads.lat.values[lat_indices]
+#     max_gradient_shf[t,:] = shf_grads.isel(**{'time':t,'lat':lat_indices})#.values[t,lat_indices,:]
+    
+
+
+#%%
+
+# Make Data Array for max_gradient --------------------------------------------
+dims = {'time'     :sst_grads.time.values,
+        'lon'      :sst_grads[lonname].values}
+attrs = {"long_name" :"max_gradient_along_gulfstream",
+         "units"     :"Kelvin per kilometer",
+         "varname"   :"sst",
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
+
+da_maxgradient = xr.DataArray(max_gradient,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="max_gradient")
+
+savename = "%sCESM1_GSvariable_sst_maxgradient_ens%02i.nc" % (datpath,e+1)
+da_maxgradient.to_netcdf(savename)
+
+
+# Make Data Array for latitude ------------------------------------------------
+attrs = {"long_name" :"latitude_of_max_gradient",
+         "units"     :"degrees North",
+         "varname"   :"sst",
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
+da_lat_max = xr.DataArray(lat_max_values,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="lat_max")
+savename = "%sCESM1_GSvariable_sst_latmax_ens%02i.nc" % (datpath,e+1)
+da_lat_max.to_netcdf(savename)
+
+
+# Make Data Array for latitude indices ------------------------------------------------
+attrs = {"long_name" :"latitude_index_of_max_gradient",
+         "units"     :"degrees North",
+         "varname"   :"sst",
+         "n_rolll"   :n_roll,
+         "lonslice"  :lonslice,
+         "latslice"  :latslice,
+         }
+
+da_lat_max = xr.DataArray(lat_max,
+                              dims=dims,
+                              coords = dims,
+                              attrs=attrs,
+                              name="lat_max_id")
+savename = "%sCESM1_GSvariable_sst_latmaxid_ens%02i.nc" % (datpath,e+1)
+da_lat_max.to_netcdf(savename)
+
+#%% Do Lag Correlation beteween ENSO Index and Gulf Stream Index
+
+
+# Compute Gulf Stream Index (Temperature based)
+gsi = max_gradient.mean(1)
+
+fig,ax = plt.subplots(1,1)
+ax.plot(times[2::12],gsi[2::12],label="Gulf Stream Index")
+ax.plot(times[2::12],nino34[2::12],label="Nino3.4")
+ax.legend()
+
+#%%
+
+lags = np.arange(36)
+nlags = len(lags)*2
+leadlag_corr = np.zeros(nlags)
+
+# Fill nan points with zeros
+
+
+# Compute Significance Value
+p     = 0.05
+tails = 2
+dof   = len(gsi)
+rhocrit = gf.ttest_rho(p,tails,dof)
+
+# Compute cases where ENSO leads
+ninoleads = []
+for l in range(len(lags)):
+    gsi_in  = gsi[:(ntime-l)]
+    nino_in = nino34[l:] 
+    
+    nino_in[np.isnan(nino_in)] = 0
+    
+    corr = np.corrcoef(nino_in,gsi_in)[0,1]
+    ninoleads.append(corr)
+    
+# Compute case where ENSO lags
+ninolags = []
+for l in range(len(lags)):
+    gsi_in  = gsi[l:]
+    nino_in = nino34[:(ntime-l)]
+    nino_in[np.isnan(nino_in)] = 0
+    corr = np.corrcoef(nino_in,gsi_in)[0,1]
+    ninolags.append(corr)
+    
+#%% Plot Lead Lag
+
+xtks = np.arange(-36,37,6)
+
+# Make the Plot
+fig,ax = plt.subplots(1,1,constrained_layout=True)
+ax.plot(-1*lags[::-1],np.array(ninoleads)[::-1],label="ENSO Leads",lw=2.5,color="cornflowerblue")
+ax.plot(lags,np.array(ninolags),label="GSI Leads",lw=2.5,color="goldenrod")
+ax.set_xlabel("GSI Leads (months)")
+ax.set_ylabel("Correlation")
+ax.axhline([0],ls='solid',color="k")
+ax.axhline([rhocrit],ls='dashed',color="gray",label=r"$\rho$ = %.2f" % (rhocrit))
+ax.axhline([-rhocrit],ls='dashed',color="gray")
+ax.axvline([0],ls='solid',color="k")
+ax.set_xticks(xtks)
+ax.set_xlim([xtks[0],xtks[-1]])
+ax.legend()
+ax.set_title("ENSO-GSI Lead-Lag, CESM1 Ens%02i" % (e+1))
+
+figname = "%sCESM1_ENSO-GSI_LeadLag_%s_ens%02i.png" % (figpath,vname,e+1)
+plt.savefig(figname,bbox_tight='inches',dpi=150,transparent=True)
+
+
+#%% Loop the computation of Gulf Strea MIndex
+
+for e in range(40):
+    ncname = "%sCESM1_Crop_sst_ens%02i.nc" % (datpath,e+1)
+    da_sst = xr.open_dataset(ncname)['sst'].load()
+        
+    # Compute Variables
+    lat_max,max_gradient,sst_grads = gf.get_gs_coords_alltime(da_sst,n_roll,return_grad=True,
+                                                           lonname=lonname,latname=latname,lonslice=lonslice,latslice=latslice)
+    
+    # Compute to kilometers
+    max_gradient   = max_gradient * 100
+    sst_grads      = sst_grads    * 100
+    
+    # Retrieve latitudes
+    ntime,nlon     = lat_max.shape
+    lat_max_values = np.zeros((ntime,nlon)) * np.nan
+    for t in range(ntime):
+        lat_indices = lat_max.isel(time=t).values
+        lat_max_values[t,:] = sst_grads[latname].values[lat_indices]
+        
+    
+    # Make Data Array for max_gradient --------------------------------------------
+    dims = {'time'     :sst_grads.time.values,
+            'lon'      :sst_grads[lonname].values}
+    attrs = {"long_name" :"max_gradient_along_gulfstream",
+             "units"     :"Kelvin per kilometer",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    
+    da_maxgradient = xr.DataArray(max_gradient,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="max_gradient")
+    
+    savename = "%sCESM1_GSvariable_sst_maxgradient_ens%02i.nc" % (datpath,e+1)
+    da_maxgradient.to_netcdf(savename)
+    
+    
+    # Make Data Array for latitude ------------------------------------------------
+    attrs = {"long_name" :"latitude_of_max_gradient",
+             "units"     :"degrees North",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    da_lat_max = xr.DataArray(lat_max_values,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="lat_max")
+    savename = "%sCESM1_GSvariable_sst_latmax_ens%02i.nc" % (datpath,e+1)
+    da_lat_max.to_netcdf(savename)
+    
+    
+    # Make Data Array for latitude indices ------------------------------------------------
+    attrs = {"long_name" :"latitude_index_of_max_gradient",
+             "units"     :"degrees North",
+             "varname"   :"sst",
+             "n_rolll"   :n_roll,
+             "lonslice"  :lonslice,
+             "latslice"  :latslice,
+             }
+    
+    da_lat_max = xr.DataArray(lat_max,
+                                  dims=dims,
+                                  coords = dims,
+                                  attrs=attrs,
+                                  name="lat_max_id")
+    savename = "%sCESM1_GSvariable_sst_latmaxid_ens%02i.nc" % (datpath,e+1)
+    da_lat_max.to_netcdf(savename)
+
+
+#%%
+
+
+
 
 # im = ax.pcolormesh(lons,lats,
 #                    (nino_grad_mean-nina_grad_mean),
