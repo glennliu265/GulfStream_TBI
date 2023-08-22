@@ -13,20 +13,30 @@ import matplotlib.pyplot as plt
 import haversine as hs   
 from haversine import Unit
 
-#%% Functions
+from scipy import stats
 
+#%% Functions
 
 def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon',
                           latslice=[20,50],lonslice=[-75,-50]):
     '''
-    INPUTS:
-    da: a dataarray containing sst on a regular grid (dimensions nx * ny)
-    m       : desired month for calculation
-    n_roll  : grid boxes to roll by
+    Given a dataarray of SST, retrieve the gulf stream coordinates by looking for the maximnum
+    meridional gradient at a given longitude within the specified search box [latslice]
+    and [lonslice].
     
-    OUTPUTS:
+    INPUTS ----
+    da          (xr.DataArray)      : a dataarray containing sst on a regular grid (dimensions nx * ny)
+    n_roll      (INT)               : grid boxes to roll indices by for gradient calculation
+    return_grad (BOOL)              : set true to return the computed gradient
+    latname     (STR)               : name of latitude dimension in xarray
+    lonname     (STR)               : name of longitude dimension in xarray
+    latslice    (ARRAY[latN,latS])  : lat bounds over to search for max gradient
+    lonslice    (ARRAY[lonW,lonE])  : lon bounds over to search for max gradient
     
-    gs_coords: a dataarray containing lat/lon of maximum sst meridional gradient (dimensions nx * 2)
+    OUTPUTS     ----
+    lats_max    (xr.DataArray)      : indices of maximum latitude 
+    grad_max    (ARRAY[time,lon])   : values of gradient at maximum latitudes
+    da_grad     (xr.DataArray)      : computed maximum gradient at all points
     
     '''
     # Flip Latitude to go from -90 to 90
@@ -68,7 +78,18 @@ def get_gs_coords_alltime(da,n_roll,return_grad=True,latname='lat',lonname='lon'
 
 
 def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
+    """
+    Given a dataarray, compute gradient over a [n_roll] gridcells.
     
+    INPUTS ----
+    da          (xr.DataArray)      : a dataarray containing sst on a regular grid (dimensions nx * ny)
+    n_roll      (INT)               : grid boxes to roll indices by for gradient calculation
+    latname     (STR)               : name of latitude dimension in xarray
+    lonname     (STR)               : name of longitude dimension in xarray
+    
+    OUTPUTS     ----
+    grad_tot    (xr.DataArray)      : computed gradients
+    """
     # Get Longitude
     lats  = da[latname]
     lats0 = np.squeeze(np.dstack((lats,np.zeros(len(lats)))))
@@ -96,11 +117,13 @@ def get_total_gradient(da, n_roll,latname='lat',lonname="lon"):
     return grad_tot
 
 def lon360to180_xr(ds,lonname='lon'):
+    """
+    Flip longitude of data.array from [0,360] --> [-180,180]
+    """
     # Based on https://stackoverflow.com/questions/53345442/about-changing-longitude-array-from-0-360-to-180-to-180-with-python-xarray
     ds.coords[lonname] = (ds.coords[lonname] + 180) % 360 - 180
     ds = ds.sortby(ds[lonname])
     return ds
-
 
 def detrend(da, dim='time', deg=1):
     # detrend the dataset da along the time dimension
@@ -186,7 +209,7 @@ def find_enso(sst,plotfig=False):
     
     return nino34, nino_date, nina_date
 
-def get_enso_dates(ndates,sst):
+def get_enso_dates(ndates,sst,return_id=False):
     
     
     # convert cftime to datetime64
@@ -208,4 +231,69 @@ def get_enso_dates(ndates,sst):
     # Subset ssts
     sst_enso     = sst.where(sst_month_indices.isin(enso_indices),drop=True)
     sst_enso     = sst_enso # []
+    if return_id:
+        return enso_months,sst_enso,enso_indices
     return enso_months,sst_enso
+
+def ttest_rho(p,tails,dof):
+    """
+    Perform T-Test, given pearsonr, p (0.05), and tails (1 or 2), and degrees
+    of freedom. The latter dof can be N-D
+    
+    Edit 12/01/2021, removed rho since it is not used
+    """
+    # Compute p-value based on tails
+    ptilde = p/tails
+    
+    # Get threshold critical value
+    if type(dof) is np.ndarray: # Loop for each point
+        oldshape = dof.shape
+        dof = dof.reshape(np.prod(oldshape))
+        critval = np.zeros(dof.shape)
+        for i in range(len(dof)): 
+            critval[i] = stats.t.ppf(1-ptilde,dof[i])
+        critval = critval.reshape(oldshape)
+    else:
+        critval = stats.t.ppf(1-ptilde,dof)
+    
+    # Get critical correlation threshold
+    if type(dof) is np.ndarray:
+        dof = dof.reshape(oldshape)
+    corrthres = np.sqrt(1/ ((dof/np.power(critval,2))+1))
+    return corrthres
+
+def format_ds(da,latname='lat',lonname='lon',timename='time'):
+    
+    # Rename lat, lon time
+    format_dict = {}
+    if latname != "lat":         # Rename Lat
+        print("Renaming lat")
+        format_dict[latname] = 'lat'
+    if lonname != "lon":         # Rename Lon
+        print("Renaming lon")
+        format_dict[lonname] = 'lon'
+    if timename != "time":       # Rename time
+        print("Renaming time")
+        format_dict[timename] = 'time'
+    if len(format_dict) > 0:
+        da = da.rename(format_dict)
+    
+    # Flip Latitude to go from -90 to 90
+    if (da[latname][1] - da[latname][0]) < 0:
+        print("Flipping Latitude to go from South to North")
+        format_dict['lat_original'] = da[latname].values
+        da = da.isel(**{latname:slice(None,None,-1)})
+        
+    # Flip longitude to go from -180 to 180
+    if np.any(da[lonname]>180):
+        print("Flipping Longitude to go from -180 to 180")
+        format_dict['lon_original'] = da[lonname].values
+        newcoord = {lonname : ((da[lonname] + 180) % 360) - 180}
+        da       = da.assign_coords(newcoord).sortby(lonname)
+    
+    # Transpose the datase
+    da = da.transpose('time','lat','lon')
+    return da
+    
+    
+
