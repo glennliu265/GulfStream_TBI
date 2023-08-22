@@ -2,56 +2,63 @@
 # -*- coding: utf-8 -*-
 """
 
-Get CESM1 LENs data, historical and RCP85
+Get CESM1 LENs data from historical and RCP85 and crop to period (1920-2023)
+
+Also computes the ENSO Index and locates the Nino/Nina dates
+
+Works with CESM1 data located on the stormtrack server...
+
 Created on Mon Aug  7 23:36:27 2023
 
 @author: gliu
 """
 
-#%% 
 import sys
 import xarray as xr
 import numpy as np
 
-#%%
+#%% Import custom modules
 
+# Custom functions in gf
+sys.path.append("/stormtrack/data3/glliu/01_Data/ICTP/GulfStream_TBI")
+import grad_funcs as gf
+
+# Uses some of my modules, WIP move to gradfuncs
 sys.path.append("/home/glliu/00_Scripts/01_Projects/00_Commons/")
 import amv.loaders as dl
 from amv import proc
 
-sys.path.append("/stormtrack/data3/glliu/01_Data/ICTP/GulfStream_TBI")
-import grad_funcs as gf
-
 #%% Crop Parameters and Paths
 
+# Variables and paths
 varnames        = ["TS","SHFLX"]
 out_varnames    = ["sst","sshf"]
 datpath         = "/vortex/jetstream/climate/data1/yokwon/CESM1_LE/downloaded/atm/proc/tseries/monthly/"
 outpath         =  "/stormtrack/data3/glliu/01_Data/ICTP/Data/"
 
+# Cropping option (space and time)
 bbox            = [-80,-45,30,50]
 ystart          = "1920-01-01"
 yend            = "2024-01-31"
 
+# Get the timeseries size and ensemble numbers from each scenario
+mnum_rcp        = np.concatenate([np.arange(1,36),np.arange(101,106)])
+ntime_rcp       = 1140
+mnum_htr        = np.concatenate([np.arange(1,36),np.arange(101,108)])
+ntime_htr       = 1032
 
-
-mnum_rcp    = np.concatenate([np.arange(1,36),np.arange(101,106)])
-ntime_rcp   = 1140
-
-mnum_htr    = np.concatenate([np.arange(1,36),np.arange(101,108)])
-ntime_htr   = 1032
-
-
+# Name of dimensions
 latname = 'lat'
 lonname = 'lon'
 
-crop_global   = True
-calc_enso     = True
+# Additional options
+crop_global   = True # Set to true to cut global data rather than bbox region
+calc_enso     = True # Compute ENSO 
 #%% Load 1 ensemble member
 
 
-for e in range(42):
-    for v in range(2):
+for e in range(42): # Loop for ensemble
+    for v in range(2): # Loop for each variable (SST and SSHF)
         
         # Crop a region and save
         vname  =  varnames[v]
@@ -91,7 +98,6 @@ for e in range(42):
         if calc_enso: # Don't save the global file
             ds_reg.to_netcdf(savenetcdf,
                      encoding={out_varnames[v]: {'zlib': True}})
-            
         
         # Compute ENSO Indices
         if calc_enso and out_varnames[v] == "sst":
